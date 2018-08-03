@@ -2,18 +2,20 @@
 
 module DumblogChef
   class Handler < Chef::Handler
-    attr_reader :group
+    attr_reader   :time, :instance_id
+    attr_reader   :group, :stream, :region
 
-    def initialize(group='/chef')
+    def initialize(group='/chef', stream=nil, region=nil)
+      @time          = Time.now.utc
+      @instance_id   = `wget -qO- http://169.254.169.254/latest/meta-data/instance-id`
+
       @group = group
+      @stream = [nil, ''].include?(stream) ? "#{time.strftime("%Y/%m/%d")}/#{instance_id}" : stream
+      @region = [nil, ''].include?(region) ? 'us-west-2' : region
     end
 
     def report
       if run_status.failed?
-        time        = Time.now.utc
-        instance_id = `wget -qO- http://169.254.169.254/latest/meta-data/instance-id`
-        stream      = "#{time.strftime("%Y/%m/%d")}/#{instance_id}"
-
         message = {}
         message[:subject]     = "chef-client Run Failed"
         message[:time]        = time.iso8601
@@ -26,7 +28,7 @@ module DumblogChef
         begin
           file.write message.to_json
           file.flush
-          `for i in {1..5}; do dumblog -group #{group} -stream #{stream} $(cat #{file.path}) && break || sleep 15; done`
+          `for i in {1..5}; do dumblog -group #{group} -stream #{stream} -region #{region} $(cat #{file.path}) && break || sleep 15; done`
         ensure
           file.close
           file.unlink
